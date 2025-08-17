@@ -4,7 +4,8 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs,
-  System.Generics.Collections, Vcl.Forms, Math,
+  System.Generics.Collections, System.Math,
+  Vcl.Forms,
   uPrimeThreadsOrchestratorState;
 
 type
@@ -14,7 +15,7 @@ type
 
   TPrimeThreadsOrhestrator = class
   strict private
-    FCriticalSection: TCriticalSection;
+    FLockObject: TObject;
     FCurrentPrime: Integer;
     FList: TObjectList<TThread>;
     FMaxNumber: Integer;
@@ -22,6 +23,8 @@ type
     FResultFileName: string;
     FState: TPrimeThreadsOrchestratorState;
     FOnUpdateStatus: TOnUpdateStatus;
+    procedure EnterCriticalSection;
+    procedure ExitCriticalSection;
     procedure DeleteResultFile;
     procedure DeleteThreadsFiles;
     procedure DoUpdateStatus;
@@ -37,8 +40,6 @@ type
     procedure AddNumberToResult(ANumber: Integer);
     procedure AddThread;
     procedure TerminateAll;
-    procedure EnterCriticalSection;
-    procedure LeaveCriticalSection;
     procedure Start(AThreadsCount: Integer; AMaxNumber: Integer = -1);
     function CurrentPrimeIsMax: Boolean;
     function NextCurrentPrime: Integer;
@@ -75,7 +76,7 @@ begin
       CloseFile(FResultFile);
     end;
   finally
-    LeaveCriticalSection;
+    ExitCriticalSection;
   end;
 end;
 
@@ -109,7 +110,7 @@ constructor TPrimeThreadsOrhestrator.Create(AResultFileName: string);
 begin
   inherited Create;
   FMaxNumber := INITIAL_MAX_NUMBER;
-  FCriticalSection := TCriticalSection.Create;
+  FLockObject := TObject.Create;
   FList := TObjectList<TThread>.Create;
   FState :=  ptosReady;
   FResultFileName := AResultFileName;
@@ -125,7 +126,7 @@ begin
       FCurrentPrime + 1 > FMaxNumber
     );
   finally
-    LeaveCriticalSection;
+    ExitCriticalSection;
   end;
 end;
 
@@ -151,14 +152,9 @@ end;
 
 destructor TPrimeThreadsOrhestrator.Destroy;
 begin
-  FreeAndNil(FCriticalSection);
+  FreeAndNil(FLockObject);
   FreeAndNil(FList);
   inherited;
-end;
-
-procedure TPrimeThreadsOrhestrator.EnterCriticalSection;
-begin
-  FCriticalSection.Enter;
 end;
 
 procedure TPrimeThreadsOrhestrator.InitThreads(AThreadsCount: integer);
@@ -172,11 +168,6 @@ begin
     AddThread;
 end;
 
-procedure TPrimeThreadsOrhestrator.LeaveCriticalSection;
-begin
-  FCriticalSection.Leave;
-end;
-
 function TPrimeThreadsOrhestrator.NextCurrentPrime: Integer;
 begin
   EnterCriticalSection;
@@ -185,7 +176,7 @@ begin
     Inc(FCurrentPrime);
     Result := FCurrentPrime;
   finally
-    LeaveCriticalSection;
+    ExitCriticalSection;
   end;
 end;
 
@@ -240,13 +231,23 @@ end;
 
 function TPrimeThreadsOrhestrator.ThreadsCount: Integer;
 begin
-  Exit(FList.Count);
+  Result := FList.Count;
 end;
 
 procedure TPrimeThreadsOrhestrator.DoUpdateStatus;
 begin
   if Assigned(FOnUpdateStatus) then
     FOnUpdateStatus(Self);
+end;
+
+procedure TPrimeThreadsOrhestrator.EnterCriticalSection;
+begin
+  System.TMonitor.Enter(FLockObject);
+end;
+
+procedure TPrimeThreadsOrhestrator.ExitCriticalSection;
+begin
+  System.TMonitor.Exit(FLockObject);
 end;
 
 end.
